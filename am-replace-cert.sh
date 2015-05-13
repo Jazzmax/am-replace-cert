@@ -1,5 +1,5 @@
 #!/bin/bash
-VER=1.0
+VER=1.1
 ##########################################################
 #
 # This script will assist to replace a server certificate on AM 7.1 appliance
@@ -7,9 +7,7 @@ VER=1.0
 
 ##########################################################
 # Usage: ./replace-cert.sh
-#  options:  -gencsr : Generates CSR
-#            -check  : To do. Checks if the cert files and tries to check a certification path.
-#            -import : Imports new certificates 
+#  options:  -import : Imports new certificates 
 #            -config : To do. Reconfigurates Weblogic to use a new server certificate.
 #			 -delete : delete the cert from the all keystores 
 #			 -list	 : list keystores
@@ -22,9 +20,11 @@ VER=1.0
 # 0.92  - some bug fixes
 # 0.93  - changed mechanism of loading a chain of certificates.
 # 1.0   - the initial release. *improved configuring the AM servers, added a backup/restore the WebLogic config
+# 1.1   - added check of the Signature Algorithm (AM-26699), +bug fixes.
 # -------------------------------
 # TO DO
-# 
+# - Expiration check
+# - 
 
 ###########################################################
 # Prompt a question and read answer
@@ -174,7 +174,7 @@ echo "OK. All RSA AM services are running."
 # Backup the current WebLogiic config file.
 echo -e "Taking a backup of the WebLogic configuration..."
 
-NOW=$(date +"%m-%d-%Y")
+NOW=$(date +"%m%d%Y_%H%I")
 BACKUP_FILENAME="$RSAAM_HOME/server/config/config_$NOW.xml"
 
 cp $RSAAM_HOME/server/config/config.xml $BACKUP_FILENAME
@@ -226,8 +226,8 @@ if [ `echo "$AMSTATUS" | grep "RUNNING" | wc -l` -lt 6 ]; then # 6 services must
 	echo -e "Now will try to revert the previous configuration.\n"
 	# Stop RSA AM
 	$RSAAM_HOME/server/rsaam stop allnoradius
-	echo -e "Saving the configuration file with replaced certificate for your analysis to config_replaced_cert_${NOW}.xml"
-	cp $RSAAM_HOME/server/config/config.xml "$RSAAM_HOME/server/config/config_replaced_cert_${NOW}.xml"
+	echo -e "Saving the configuration file with replaced certificate for further analysis to config_failed_replaced_cert_${NOW}.xml"
+	cp $RSAAM_HOME/server/config/config.xml "$RSAAM_HOME/server/config/config_failed_replaced_cert_${NOW}.xml"
 	# Restore a Weblogic config from the saved backup
 	yes | cp -fr $BACKUP_FILENAME $RSAAM_HOME/server/config/config.xml 
 	exec 5>&1
@@ -237,8 +237,6 @@ if [ `echo "$AMSTATUS" | grep "RUNNING" | wc -l` -lt 6 ]; then # 6 services must
 	fi
 	exit 1
 fi
-
-echo $AMSTATUS	
 
 echo "DONE. All RSA AM services are running. "
 
@@ -437,8 +435,12 @@ SRV_CERT_ISSUER=`echo "${CERT_INFO}" | grep "issuer=" | sed 's/^issuer= //'`
 SRV_CERT_SUBJECT=`echo "${CERT_INFO}" | grep "subject=" | sed 's/^subject= //'`
 
 SRV_CERT_SIGALG=`openssl x509 -in "${CERTSPATH}${CERTS[0]}" -noout -text | grep -m 1 "Signature Algorithm:" | sed -e 's/^ *//g' -e 's/^Signature Algorithm: //'`
-
-echo -e "$SRV_CERT_SIGALG\n"
+echo -e "Signature Algorithm = $SRV_CERT_SIGALG\n"
+# check AM-26699 
+if [ "$SRV_CERT_SIGALG" != "sha1WithRSAEncryption" ]; then 
+	echo -e "Only sha1WithRSAEncryption signature algorithm supported. Exiting."
+	exit 1
+fi	
 
 # Check to see if CN=<fqdn> 
 openssl x509 -in "${CERTSPATH}${CERTS[0]}" -noout -subject | grep -e "CN=$FQDN"
@@ -463,7 +465,15 @@ while [ $FULLCHAIN -eq 0 ]; do
     echo -e "Details of the certificate ${CERTS[$i]}:\n------------"
 	CERTINFO=`openssl x509 -in "${CERTSPATH}${CERTS[$i]}" -noout -subject -issuer -dates -serial`
 	echo "$CERTINFO"
+	C_SIGALG=`openssl x509 -in "${CERTSPATH}${CERTS[$i]}" -noout -text | grep -m 1 "Signature Algorithm:" | sed -e 's/^ *//g' -e 's/^Signature Algorithm: //'`
+	echo -e "Signature Algorithm = $C_SIGALG"
     echo -e "------------"
+
+	# check AM-26699 
+	if [ "$C_SIGALG" != "sha1WithRSAEncryption" ]; then 
+		echo -e "Only sha1WithRSAEncryption signature algorithm supported. Exiting."
+		exit 1
+	fi	
 	C_ISSUER=`echo "$CERTINFO" | grep "issuer=" | sed 's/^issuer= //'`
 	C_SUBJECT=`echo "$CERTINFO" | grep "subject=" | sed 's/^subject= //'`
 	
