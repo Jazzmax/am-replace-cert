@@ -43,11 +43,12 @@ When run with the only certificate alias name as an argument it will go through 
 
 ./am-replace-cert.sh newacertaias
 
-### STAGE 1. Generating New Keys and a Certificate Signing Request (CSR).
+#### STAGE 1. Generating New Keys and a Certificate Signing Request (CSR).
+
 a. Retrieving Keystore Passwords
 b. Generating New Keys
-   - you will be prompted to enter password to protect a newly generated private key (must be at least 6 characters).
-   - 2048 bit keys are generated and no option to change it.
+  * you will be prompted to enter password to protect a newly generated private key (must be at least 6 characters).
+  * 2048 bit keys are generated and no option to change it.
 
 c. Creating CSR
 
@@ -55,31 +56,41 @@ A newly created CSR in PEM format will be displayed to you and additionally a SC
 
 Submit the request to your certificate authority (CA). For more information, talk to your CA administrator.
 
-### STAGE 2. Importing the Certificates
+#### STAGE 2. Importing the Certificates
+
 a. Prior importing any certificate the script will check the pre-requisites:
-   1. Signature algorithm - only sha1 is supported
-   2. If you use a certificate that contains any extended key usage (EKU) fields marked critical, both of the following key usage extensions must be present:
-        serverAuth (1.3.6.1.5.5.7.3.1) -- TLS Web server authentication
-        clientAuth (1.3.6.1.5.5.7.3.2) -- TLS Web client authentication
-   3. CN of the server certificate must be FQDN of the server. No SAN or wildcards supported. 
+  1. Signature algorithm - only sha1 is supported.
+  2. If you use a certificate that contains any extended key usage (EKU) fields marked critical, both of the following key usage extensions must be present:
+   * serverAuth (1.3.6.1.5.5.7.3.1) -- TLS Web server authentication;
+   * clientAuth (1.3.6.1.5.5.7.3.2) -- TLS Web client authentication.
+
+  3. CN of the server certificate must be FQDN of the server. No SAN or wildcards supported. 
 
 b. Verify the full certification path
 
-b. Import the CA root certificate (the intermediate CA certificates if any) into the root keystore
-c. Import the CA root certificate (and the intermediate CA certificates if any) into the server keystore
-d. Import the signed server certificate into the server keystore
-e. Import the CA root certificate into the JDK CA certificate keystore
+c. Import the CA root certificate (the intermediate CA certificates if any) into the root keystore
 
-### STAGE 3. Configuring the RSA Authentication Manager Servers and Restarting Authentication Manager
+e. Import the CA root certificate (and the intermediate CA certificates if any) into the server keystore
+
+f. Import the signed server certificate into the server keystore
+
+g. Import the CA root certificate into the JDK CA certificate keystore
+
+#### STAGE 3. Configuring the RSA Authentication Manager Servers and Restarting Authentication Manager
 
 a. Prior configuring the AM servers to use the new certificate the script will: 
-- take a backup of current Weblogic configuration;
-- ensure the the required AM servers are running.
+
+  * take a backup of current Weblogic configuration;
+  * ensure the the required AM servers are running.
 
 b. Configure the RSA Authentication Manager Administration Server
+
 c. Configure the RSA Authentication Manager Proxy Server
+
 d. Configure the RSA Authentication Manager
+
 e. Restart the RSA Authentication Manager
+
 f. Check if the RSA Authentication Manager Servers are successfully started. 
    If failed the script will restore the saved Weblogic configuration and restart AM.
 
