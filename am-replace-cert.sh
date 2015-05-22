@@ -1,5 +1,5 @@
 #!/bin/bash
-VER=1.3
+VER=1.4
 ##########################################################
 ## This script is to assist with replacing a server certificate on AM 7.1 appliance
 ##
@@ -28,15 +28,20 @@ VER=1.3
 # 1.0   - the initial release. 
 #		* improved configuring the AM servers
 #		+ added a backup/restore the WebLogic config
-# 1.1   + added check of the Signature Algorithm (AM-26699) 
+# 1.1   + added check of the sha1 Signature Algorithm (AM-26699) 
 #		* bug fixes
-# 1.2	+ added expiration check
+# 1.2   + added expiration check
 # 1.3   + check if the RSA AM installed
-# 	    + get RSAAM_HOME from /etc/init.d/rsaauthmgr for support custom linux installs 
-#		+ improved error handling and user output
+#       + get RSAAM_HOME from /etc/init.d/rsaauthmgr for support custom linux installs 
+#       * improved error handling and user output
+# 1.4   + check AM version 7.1 SP4+
+#       + check the AM is not configured with a chosen alias
+#		+ not allow to delete current certificate
+#		+ critical EKU check
+#		* bug fixes
 # -------------------------------
 # TO DO
-# - To check the EKU of a server certificate
+# - 
 # - 
 
 
@@ -77,6 +82,36 @@ This script should be run as \"rsaadmin\"\n
     exit 1
 } # End of usage
 
+###########################################################
+# Prompt a question and read answer
+# Param 1: Question
+# Param 2: default answer
+###########################################################
+promptYesNo(){
+
+  echo -n "$1 (y/n) [$2] "
+  read answer
+  answer=`echo $answer | tr [A-Z] [a-z]`
+  if [ -z "$answer" ]; then
+    answer=$2
+  fi
+  if [ "xy" = "x$answer" ]; then
+    return 1
+  else
+    return 0
+  fi
+}
+
+############################################################
+# If the supplied return value indicates an error, exit immediately
+#
+function exitOnError() {
+	RETVAL=$1
+	if [ $RETVAL != 0 ]; then
+        echo -e "$2"
+		exit $RETVAL
+	fi
+}
 
 ############################################################
 # Generating New Keys and a Certificate Signing Request
@@ -85,17 +120,12 @@ gencsr(){
 echo -e "Generating a key pair with the alias name $ALIAS...\n "
 
 $RSAAM_HOME/utils/rsautil manage-ssl-certificate --genkey --alias "$ALIAS" --dname "CN=$FQDN" --keystore $RSAAM_HOME/server/security/$MACHINE_NAME.jks -m $MASTER_PW --storepass $ID_STORE_PW
-	if [ $? -ne 0 ]; then
-		echo -e ${COL_RED}"Error: ${COL_RESET} Failed to generate a key. Exiting."${COL_RESET}
-		exit 1
-	fi 	
+	exitOnError $? "${COL_RED}Error: ${COL_RESET} Failed to generate a key. Exiting.${COL_RESET}"
+
 
 echo -e "Creating a CSR...\n"	
 $RSAAM_HOME/utils/rsautil manage-ssl-certificate --certreq --alias "$ALIAS" --keystore $RSAAM_HOME/server/security/$MACHINE_NAME.jks --csr-file "/tmp/${ALIAS}_csr.pem" -m $MASTER_PW --storepass $ID_STORE_PW
-	if [ $? -ne 0 ]; then
-		echo -e ${COL_RED}"Error: ${COL_RESET} Failed to create CSR. Exiting."${COL_RESET}
-		exit 1
-	fi 	
+	exitOnError $? "${COL_RED}Error: ${COL_RESET} Failed to create CSR. Exiting.${COL_RESET}"
 
 if [ ! -f "/tmp/${ALIAS}_csr.pem" ]; then
   echo -e ${COL_RED}"CSR not generated in /tmp/. Check the previous output. Exiting."${COL_RESET}
@@ -121,7 +151,6 @@ echo "Importing trusted CA certificates..."
 #importing the CA certs
 
 i=1
-
 while [ "$i" -lt "${#CERTS[@]}" ]
 do    
 	# Importing CA cert into the root keystore 
@@ -144,6 +173,8 @@ done
 
 echo "Importing the signed server certificate ${CERTS[0]} into the server keystore"
 	$RSAAM_HOME/utils/rsautil manage-ssl-certificate --import --alias "${ALIAS}" --cert-file "${CERTSPATH}${CERTS[0]}" --keystore $RSAAM_HOME/server/security/$MACHINE_NAME.jks -m $MASTER_PW --storepass $ID_STORE_PW	
+		exitOnError $? "${COL_RED}ERROR: Failed to import !!!${COL_RESET}\nExiting"
+	
 }
 
 ############################################################
@@ -158,11 +189,7 @@ echo
 echo "Verifying a certificate with alias $NEWALIAS. The full chain of certificates should be shown"
 echo 
 list_certs "$NEWALIAS"
-if [ $? -ne 0 ]; then 
-	echo 
-	echo "The alias \"$NEWALIAS\" not found in the identity store. Exiting."
-	exit 1
-fi	
+	exitOnError $? "The alias \"$NEWALIAS\" not found in the identity store. Exiting."
 
 promptYesNo "Are you sure you what to configure the RSA AM with the certificate above?" y
 		if [ $? -eq 0 ]; then
@@ -202,33 +229,23 @@ echo -e "Done. A copy of the Weblogic config.xml saved to $BACKUP_FILENAME"
 # Configuring the RSA Authentication Manager Administration Server
 echo "Configuring the RSA Authentication Manager Administration Server..."
 $RSAAM_HOME/utils/rsautil manage-ssl-certificate --config-server --alias "$NEWALIAS" --keystore $RSAAM_HOME/server/security/$MACHINE_NAME.jks -m $MASTER_PW --storepass $ID_STORE_PW --server-name AdminServer
-if [ $? -ne 0 ]; then 
-	echo "Failed to configure the Administration Server. Check out the $RSAAM_HOME/server/servers/AdminServer/logs/AdminServer.out for details. Exiting."
-	exit 1
-fi
+	exitOnError $? "${COL_RED}Failed to configure the Administration Server. Check out the $RSAAM_HOME/server/servers/AdminServer/logs/AdminServer.out for details.${COL_RESET} \nExiting."
  
 echo
 	
 # Configuring the RSA Authentication Manager Proxy Server:
 echo "Configuring the RSA Authentication Manager Proxy Server..."
 $RSAAM_HOME/utils/rsautil manage-ssl-certificate --config-server --alias "$NEWALIAS" --keystore $RSAAM_HOME/server/security/$MACHINE_NAME.jks -m $MASTER_PW --storepass $ID_STORE_PW --server-name proxy_server
-if [ $? -ne 0 ]; then 
-	echo "Failed to configure the  RSA Authentication Manager Proxy Server. Check out the $RSAAM_HOME/server/servers/proxy_server/logs/proxy_server.out for details. Exiting."
-	exit 1
-fi
+	exitOnError $? "${COL_RED}Failed to configure the  RSA Authentication Manager Proxy Server. Check out the $RSAAM_HOME/server/servers/proxy_server/logs/proxy_server.out for details.${COL_RESET}\nExiting."
+
 echo 
 
 # Configuring the RSA Authentication Manager:
 echo "Configuring the RSA Authentication Manager..."
 $RSAAM_HOME/utils/rsautil manage-ssl-certificate --config-server --alias "$NEWALIAS" --keystore $RSAAM_HOME/server/security/${MACHINE_NAME}.jks -m $MASTER_PW --storepass $ID_STORE_PW --server-name ${MACHINE_NAME}_server
-if [ $? -ne 0 ]; then 
-	echo "Failed to configure the Authentication Manager Server. Check out the $RSAAM_HOME/server/servers/${MACHINE_NAME}_server/logs/${MACHINE_NAME}_server.out for details. Exiting."
-	exit 1
-fi
-echo 
+	exitOnError $? "${COL_RED}Failed to configure the Authentication Manager Server. Check out the $RSAAM_HOME/server/servers/${MACHINE_NAME}_server/logs/${MACHINE_NAME}_server.out for details.${COL_RESET}\n Exiting."
 
-echo 
-echo "Restarting the RSA Authentication Manager Servers... Please wait this may take up to 10 minutes."
+echo -e "\nRestarting the RSA Authentication Manager Servers... Please wait this may take up to 10 minutes."
 	
 $RSAAM_HOME/server/rsaam restart allnoradius
  	
@@ -261,7 +278,11 @@ echo "DONE. All RSA AM services are running. "
 ############################################################
 delete_cert(){
 	CERT_ALIAS=$1
-	
+	CURR_CERT=`grep -oPm1 "(?<=<server-private-key-alias>)[^<]+" $RSAAM_HOME/server/config/config.xml`
+
+	if [ "${CERT_ALIAS}" = "${CURR_CERT}" ]; then
+		exitOnError 1 "The AM currently configured with ${COL_YELLOW}\"${CERT_ALIAS}\". \n${COL_RED}You cannot delete the current certificate.${COL_RESET} \nExiting."
+	fi
 	promptYesNo "Are you sure you want to delete \"${CERT_ALIAS}\" from all key stores?" n
 		if [ $? -eq 0 ]; then
 			echo "Exiting."
@@ -280,7 +301,6 @@ delete_cert(){
 
 	$RSAAM_HOME/utils/rsautil manage-ssl-certificate --delete --alias "$CERT_ALIAS" --keystore $RSAAM_HOME/appserver/jdk/jre/lib/security/cacerts -m $MASTER_PW --storepass "changeit"
 	
-	
 }
 
 ############################################################
@@ -295,12 +315,17 @@ echo
 	
 # Retriving keystore passwords
 ID_STORE_PW=`$RSAAM_HOME/utils/rsautil manage-secrets --action get com.rsa.identity.store -m $MASTER_PW | grep com.rsa.identity.store |cut -d':' -f2`
-if [ $? -ne 0 ]; then 
-	echo "Exiting."
+if [ -z "$ID_STORE_PW" ]; then 
+	echo -e "${COL_RED} ERROR: Failed to retrieve keystore passwords. Exiting.${COL_RESET}"
 	exit 1 
 fi
 
+
 ROOT_STORE_PW=`$RSAAM_HOME/utils/rsautil manage-secrets --action get com.rsa.root.store -m $MASTER_PW | grep com.rsa.root.store |cut -d':' -f2`
+if [ -z "$ROOT_STORE_PW" ]; then 
+	echo -e "${COL_RED} ERROR: Failed to retrieve keystore passwords. Exiting.${COL_RESET}"
+	exit 1 
+fi
 		
 }
 
@@ -356,39 +381,32 @@ echo "$RESOUT" | grep "Certificate[1]"
 }
 
 ###########################################################
-# Prompt a question and read answer
-# Param 1: Question
-# Param 2: default answer
-###########################################################
-promptYesNo(){
-
-  echo -n "$1 (y/n) [$2] "
-  read answer
-  answer=`echo $answer | tr [A-Z] [a-z]`
-  if [ -z "$answer" ]; then
-    answer=$2
-  fi
-  if [ "xy" = "x$answer" ]; then
-    return 1
-  else
-    return 0
-  fi
-}
-
-###########################################################
 # Check AM-26699 defect
 # Only sha1WithRSAEncryption signature algorithm supported
-check_am_26699() {
+check_sha1() {
 	CERT_SIGALG=$1 
 	if [ "$CERT_SIGALG" != "sha1WithRSAEncryption" ]; then 
 		echo -e "signature algorithm =${COL_RED} $CERT_SIGALG ${COL_RESET}\n"
-		echo -e "${COL_RED}Error: Only sha1WithRSAEncryption signature algorithm supported.$COL_RESET Exiting."
+		echo -e "${COL_RED}Error: Only sha1WithRSAEncryption signature algorithm supported.${COL_RESET} Exiting."
 		exit 1
 	else 
 		echo -e "signature algorithm = $CERT_SIGALG\n"
 		return 0
 	fi	
 }
+############################################################
+# Check if If you use a certificate that contains any extended key usage fields marked critical,
+# both of the following key usage extensions must be present:
+# – serverAuth (1.3.6.1.5.5.7.3.1) -- TLS Web server authentication
+# – clientAuth (1.3.6.1.5.5.7.3.2) -- TLS Web client authentication
+#
+check_critical_eku() {
+	CERT_FILE=$1
+	openssl x509 -in "${CERT_FILE}" -text | grep -A 1 -E "X509v3.*Extended Key Usage.*critical" | grep -E "TLS Web Server Authentication.*TLS Web Client Authentication" > /dev/null
+		exitOnError $? "${COL_RED}Error: A certificate that contains any extended key usage fields marked critical, \nboth of the following key usage extensions must be present: \n - serverAuth (1.3.6.1.5.5.7.3.1) -- TLS Web server authentication \n - clientAuth (1.3.6.1.5.5.7.3.2) -- TLS Web client authentication${COL_RESET} \nExiting"
+
+}
+
 
 ###########################################################
 # Main
@@ -405,6 +423,7 @@ if [ $# -eq 0 ]; then
 	exit 1
 fi
 
+# Check pre-requisite
 # Is it run by rsaadmin?
 if [ "`whoami`" != "rsaadmin" ]; then
   echo "This script should be run as rsaadmin"
@@ -416,6 +435,12 @@ if [ ! -f /etc/init.d/rsaauthmgr ]; then
   echo -e $COL_RED"/etc/init.d/rsaauthmgr not found."$COL_RESET
   exit 1
 fi  
+
+# Check AM version 
+if ! grep -E "am-7.1.SP(2|3|4|5)" /usr/local/RSASecurity/RSAAuthenticationManager/utils/etc/.patch.xml > /dev/null; then 
+   echo -e ${COL_RED}"This script must be run on AM version 7.1 SP2 or higher."${COL_RESET}
+   exit 1
+fi  	
 
 # Get RSA home directory
 RSAAM_HOME=`grep -e 'INSTALL_ROOT=' /etc/init.d/rsaauthmgr |  sed 's/[^=]*=//'` 	
@@ -455,8 +480,6 @@ if [ $# -gt 0 ]; then
 else usage && exit 1
 fi
 
-
-
 get_passwords
 
 echo "com.rsa.identity.store: $ID_STORE_PW"
@@ -468,10 +491,10 @@ echo -n "The current server certificate "
 $RSAAM_HOME/utils/rsautil manage-ssl-certificate --list  --alias "$CURR_CERT" --keystore $RSAAM_HOME/server/security/$MACHINE_NAME.jks -m $MASTER_PW --storepass $ID_STORE_PW
 echo
 
-ALIAS=$1
+ALIAS=`echo $1 | tr '[:upper:]' '[:lower:]'`
 
 echo -n "Checking to see if the certificate alias \"${ALIAS}\" exists. "
-$RSAAM_HOME/utils/rsautil manage-ssl-certificate --list --keystore $RSAAM_HOME/server/security/$MACHINE_NAME.jks -m $MASTER_PW --storepass $ID_STORE_PW | grep "$ALIAS" >null
+$RSAAM_HOME/utils/rsautil manage-ssl-certificate --list --keystore $RSAAM_HOME/server/security/$MACHINE_NAME.jks -m $MASTER_PW --storepass $ID_STORE_PW | grep -i "$ALIAS" > /dev/null
 	if [ $? -eq 1 ]; then
 		echo -e ${COL_GREEN}"Does not exist."${COL_RESET}
 		promptYesNo "Do you want to generate a new signing certificates request?" y
@@ -481,14 +504,17 @@ $RSAAM_HOME/utils/rsautil manage-ssl-certificate --list --keystore $RSAAM_HOME/s
 		fi	
 	gencsr
 	else
-		echo -e ${COL_BLUE}"The alias already exists!"${COL_RESET}
+		echo -e ${COL_BLUE}"\"${ALIAS}\" already exists!"${COL_RESET}
+		if [ "$ALIAS" = "$CURR_CERT" ]; then
+			echo -e ${COL_RED}"!!! The AM is already configured with the alias \"$ALIAS\". Exiting."${COL_RESET}
+			exit 1
+		fi
 	fi
 
 echo -e "If you have received a reply from the CA make sure you have saved the server certificate, CA root certificate, and intermediate CA certificates (if any) into ${CERTSPATH}."
-promptYesNo "Do you want to import certificates for the alias \"${ALIAS}\"" y
+promptYesNo "Do you want to import certificates for the alias \"${ALIAS}\"" n
 	if [ $? -eq 0 ]; then
-		echo -e ${COL_YELLOW}"OK. To continue the procedure please run the script passing the same alias name, e.g.:"${COL_RESET}
-		echo -e ${COL_GREEN}"./${SCRIPT_NAME} ${ALIAS}${COL_RESET} \nExiting." 
+		echo -e "${COL_YELLOW}OK. To continue the procedure please run the script passing the same alias name, e.g.:${COL_RESET}\n ${COL_GREEN}./${SCRIPT_NAME} ${ALIAS}${COL_RESET} \nExiting." 
 		exit 1
 	fi	
 
@@ -516,7 +542,10 @@ SRV_CERT_SUBJECT=`echo "${CERT_INFO}" | grep "subject=" | sed 's/^subject= //'`
 SRV_CERT_SIGALG=`openssl x509 -in "${CERTSPATH}${CERTS[0]}" -noout -text | grep -m 1 "Signature Algorithm:" | sed -e 's/^ *//g' -e 's/^Signature Algorithm: //'`
 
 # check AM-26699 
-check_am_26699 $SRV_CERT_SIGALG
+check_sha1 $SRV_CERT_SIGALG
+
+# check EKU
+check_critical_eku ${CERTSPATH}${CERTS[0]} 
 
 # Check to see if CN=<fqdn> 
 openssl x509 -in "${CERTSPATH}${CERTS[0]}" -noout -subject | grep -i -e "CN=${FQDN}" > /dev/null
@@ -527,7 +556,7 @@ openssl x509 -in "${CERTSPATH}${CERTS[0]}" -noout -subject | grep -i -e "CN=${FQ
 
 openssl x509 -checkend $(( 86400 * 10 )) -in "${CERTSPATH}${CERTS[0]}" > /dev/null
     if [ $? != 0 ]; then
-        echo -e ${COL_RED}"==> Certificate ${CERTS[0]} is about to expire soon. Exiting."${COL_RESET}
+        echo -e ${COL_RED}"==> Certificate ${CERTS[0]} is about to expire soon (< 10 days). Exiting."${COL_RESET}
 		exit 1
     fi	
 	
@@ -550,7 +579,7 @@ while [ $FULLCHAIN -eq 0 ]; do
 	C_SIGALG=`openssl x509 -in "${CERTSPATH}${CERTS[$i]}" -noout -text | grep -m 1 "Signature Algorithm:" | sed -e 's/^ *//g' -e 's/^Signature Algorithm: //'`
 	
 	# check AM-26699 
-	check_am_26699 $C_SIGALG
+	check_sha1 $C_SIGALG
 
     echo -e ${COL_YELLOW}"------------"${COL_RESET}
 
@@ -600,9 +629,6 @@ promptYesNo "Import the above certificates into the appliance?" y
 		
 import_certs "$ALIAS"
 
-list_certs "$ALIAS"
-
 configureServers "$ALIAS"
-
   
 echo -e ${COL_GREEN}"The certificate replacement successful."${COL_RESET}

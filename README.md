@@ -2,16 +2,16 @@
 
 Author : Maxim Siyazov 
 
-Certificate replacement tool for RSA Authentication Manager 7.1.
+Certificate replacement tool for RSA Authentication Manager Appliance 3.0.4 or RSA Authentication Manager 7.1 SP4 on Red Hat Linux.
 
 The script will help to go through the system certificate replacement procedure. 
 
 ## Installation
 
-Copy the script under a directory that emcsrv and rsaadmin users have access to, e.g. /tmp
+Copy the script in to directory that emcsrv and rsaadmin users have access to, e.g. /tmp.
 
 Make sure to have the following pre-requisite met (or the script will gracefully stop)
-- This script should be run as "rsaadmin"
+- This script should be run as "rsaadmin".
 
 ## Usage
 ```
