@@ -3,6 +3,17 @@ VER=1.4
 ##########################################################
 ## This script is to assist with replacing a server certificate on AM 7.1 appliance
 ##
+##  Copyright (C) 2015 Maxim Siyazov 
+##
+##  This script is free software: you can redistribute it and/or modify it under
+##  the terms of the GNU General Public License as published by the Free Software
+##  Foundation, either version 2 of the License, or (at your option) any later
+##  version.
+##  This script is distributed in the hope that it will be useful, but WITHOUT
+##  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+##  FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+##  Please refer to the GNU General Public License <http://www.gnu.org/licenses/>
+##
 ##########################################################
 # Usage: am-replace-cert.sh [OPTION] <alias>
 # Specify only <alias> without parameters to do an whole certificate replacement procedure.  
@@ -42,11 +53,12 @@ VER=1.4
 # -------------------------------
 # TO DO
 # - 
-# - 
 
 
 ###########################################################
 # GLOBAL VARS
+
+CERTSPATH="/tmp/"		# Path to certificate files 	
 
 # Colouring output
 COL_BLUE="\x1b[34;01m"
@@ -54,8 +66,6 @@ COL_GREEN="\x1b[32;01m"
 COL_RED="\x1b[31;01m"
 COL_YELLOW="\x1b[33;01m"
 COL_RESET="\x1b[39;49;00m"
-
-CERTSPATH="/tmp/"		# Path to certificate files 	
 
 # Script's directory 	
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -69,10 +79,9 @@ usage() {
 echo -e "Usage: $SCRIPT_NAME [OPTION] alias\n
 This script should be run as \"rsaadmin\"\n
     <alias> 		- whole certificate replacement procedure
-				1. generate a key pair
-				2. create a CSR
-				3. import certificates
-				4. configure servers\n
+				1. generate a key pair and create a CSR
+				2. import certificates
+				3. configure servers\n
    -configure <alias>	- configuring the RSA AM to use a certificate with <alias>
    
    -list [<alias>]	- list a certificate with <alias> or all certificate in the identity and root keystores
@@ -625,10 +634,9 @@ promptYesNo "Import the above certificates into the appliance?" y
 		echo "Exiting."
 		exit 1
 	fi 
-		
-		
-import_certs "$ALIAS"
 
+import_certs "$ALIAS"
 configureServers "$ALIAS"
   
 echo -e ${COL_GREEN}"The certificate replacement successful."${COL_RESET}
+exit 0
