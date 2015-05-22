@@ -18,10 +18,9 @@ Make sure to have the following pre-requisite met (or the script will gracefully
 ./am-replace-cert.sh [OPTION] alias
 
     <alias> 		- whole certificate replacement procedure:
-				1. generate a key pair
-				2. create a CSR
-				3. import certificates
-				4. configure servers
+				1. generate a key pair and create a CSR
+				2. import certificates
+				3. configure servers
 				
    -configure <alias>	- configuring the RSA AM to use a certificate with <alias>
    
