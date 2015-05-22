@@ -46,8 +46,8 @@ When run with the only certificate alias name as an argument it will go through 
 ### STAGE 1. Generating New Keys and a Certificate Signing Request (CSR).
 a. Retrieving Keystore Passwords
 b. Generating New Keys
-     - you will be prompted to enter password to protect a newly generated private key (must be at least 6 characters).
-     - 2048 bit keys are generated and no option to change it.
+   - you will be prompted to enter password to protect a newly generated private key (must be at least 6 characters).
+   - 2048 bit keys are generated and no option to change it.
 
 c. Creating CSR
 
@@ -57,11 +57,11 @@ Submit the request to your certificate authority (CA). For more information, tal
 
 ### STAGE 2. Importing the Certificates
 a. Prior importing any certificate the script will check the pre-requisites:
-     1. Signature algorithm - only sha1 is supported
-     2. If you use a certificate that contains any extended key usage (EKU) fields marked critical, both of the following key usage extensions must be present:
-           serverAuth (1.3.6.1.5.5.7.3.1) -- TLS Web server authentication
-           clientAuth (1.3.6.1.5.5.7.3.2) -- TLS Web client authentication
-     3. CN of the server certificate must be FQDN of the server. No SAN or wildcards supported. 
+   1. Signature algorithm - only sha1 is supported
+   2. If you use a certificate that contains any extended key usage (EKU) fields marked critical, both of the following key usage extensions must be present:
+        serverAuth (1.3.6.1.5.5.7.3.1) -- TLS Web server authentication
+        clientAuth (1.3.6.1.5.5.7.3.2) -- TLS Web client authentication
+   3. CN of the server certificate must be FQDN of the server. No SAN or wildcards supported. 
 
 b. Verify the full certification path
 
