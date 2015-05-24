@@ -1,5 +1,5 @@
 #!/bin/bash
-VER=1.4
+VER=1.41
 ##########################################################
 ## This script is to assist with replacing a server certificate on AM 7.1 appliance
 ##
@@ -411,9 +411,11 @@ check_sha1() {
 #
 check_critical_eku() {
 	CERT_FILE=$1
-	openssl x509 -in "${CERT_FILE}" -text | grep -A 1 -E "X509v3.*Extended Key Usage.*critical" | grep -E "TLS Web Server Authentication.*TLS Web Client Authentication" > /dev/null
-		exitOnError $? "${COL_RED}Error: A certificate that contains any extended key usage fields marked critical, \nboth of the following key usage extensions must be present: \n - serverAuth (1.3.6.1.5.5.7.3.1) -- TLS Web server authentication \n - clientAuth (1.3.6.1.5.5.7.3.2) -- TLS Web client authentication${COL_RESET} \nExiting"
-
+	CERTOUT=`openssl x509 -in "${CERT_FILE}" -text | grep -A 1 -E "X509v3.*Extended Key Usage.*critical"`
+	if [ ! -z "$CERTOUT" ]; then 
+	    cat $CERTOUT | grep -E "TLS Web Server Authentication.*TLS Web Client Authentication" > /dev/null
+			exitOnError $? "${COL_RED}Error: A certificate that contains any extended key usage fields marked critical, \nboth of the following key usage extensions must be present: \n - serverAuth (1.3.6.1.5.5.7.3.1) -- TLS Web server authentication \n - clientAuth (1.3.6.1.5.5.7.3.2) -- TLS Web client authentication${COL_RESET} \nExiting"
+	fi
 }
 
 
