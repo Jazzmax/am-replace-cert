@@ -479,7 +479,7 @@ if [ $# -gt 0 ]; then
 	get_passwords
 	list_certs "$2"
     exit 0	 	 
-  elif [ "$1" = "-config" ]; then 
+  elif [ "$1" = "-configure" ]; then 
 	if [ -z "$2" ]; then usage && exit 1 
 	fi
     get_passwords	
